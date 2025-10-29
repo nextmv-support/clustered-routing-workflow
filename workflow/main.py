@@ -1,10 +1,12 @@
 import colorsys
 import datetime
 import glob
+import json
 import os
 from typing import Any
 
 import nextmv
+import nextmv.cloud
 import pandas as pd
 import pytz
 from nextpipe import FlowSpec, app, foreach, join, needs, step
@@ -13,6 +15,7 @@ options = nextmv.Options(
     # IO related options
     nextmv.Option("input", str, "inputs/", "Path to input dir.", False),
     nextmv.Option("output", str, "outputs/solutions/", "Path to output dir.", False),
+    nextmv.Option("statistics", str, "outputs/statistics/", "Path to statistics dir.", False),
     nextmv.Option("assets", str, "outputs/assets/", "Path to asset dir.", False),
     # Clustering options
     nextmv.Option("cluster_count", int, 5, "Number of clusters to create.", False),
@@ -33,6 +36,7 @@ class Flow(FlowSpec):
             "duration": options.cluster_duration,
             "provider": options.cluster_provider,
         },
+        full_result=True,
     )
     @step
     def cluster():
@@ -42,7 +46,7 @@ class Flow(FlowSpec):
     @needs(predecessors=[cluster])
     @foreach()
     @step
-    def transform(result_path: str):
+    def transform(result: nextmv.cloud.RunResult):
         """Transforms the result for nextroute."""
         # Shift start is tomorrow at 8am
         shift_start = datetime.datetime.now(pytz.timezone("UTC")).replace(
@@ -50,7 +54,7 @@ class Flow(FlowSpec):
         ) + datetime.timedelta(days=1)
         # Convert all CSV files in result_path to nextroute format (dict/JSON)
         routing_inputs = []
-        for file_path in glob.glob(f"{result_path}/*.csv"):
+        for file_path in glob.glob(f"{result.output}/*.csv"):
             df = pd.read_csv(file_path)
             routing_input = {
                 "defaults": {
@@ -115,6 +119,37 @@ class Flow(FlowSpec):
         os.makedirs(options.output, exist_ok=True)
         pd.DataFrame(routes).to_csv(f"{options.output}/routes.csv", index=False)
         pd.DataFrame(unplanned).to_csv(f"{options.output}/unplanned.csv", index=False)
+
+    @needs(predecessors=[cluster, route])
+    @join()
+    @step
+    def collect_statistics(results: list[tuple[nextmv.cloud.RunResult, list[dict[str, Any]]]]):
+        """Prepare overall statistics."""
+        stats = {}
+        # Simply relay cluster statistics as they are already scalar values
+        cluster_stats = results[0][0].metadata.statistics
+        if cluster_stats:
+            stats.update(cluster_stats.get("result", {}).get("custom", {}))
+        # Aggregate routing statistics
+        total_unplanned_stops = 0
+        total_vehicles_used = 0
+        total_value = 0
+        for routing_result in results:
+            routing_result = routing_result[1]  # Unwrap from list (only one predecessor)
+            routing_stats = routing_result.get("statistics", {}).get("result", {}).get("custom", {})
+            total_unplanned_stops += routing_stats.get("unplanned_stops", 0)
+            total_vehicles_used += routing_stats.get("activated_vehicles", 0)
+            total_value += routing_result.get("statistics", {}).get("result", {}).get("value", 0)
+        stats |= {
+            "unplanned_stops": total_unplanned_stops,
+            "activated_vehicles": total_vehicles_used,
+            "value": total_value,
+        }
+
+        # Write solutions
+        os.makedirs(options.statistics, exist_ok=True)
+        with open(f"{options.statistics}/statistics.json", "w") as f:
+            json.dump(stats, f, indent=2)
 
 
 def main():
