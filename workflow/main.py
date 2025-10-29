@@ -11,7 +11,7 @@ options = nextmv.Options(
 
 # >>> Workflow definition
 class Flow(FlowSpec):
-    @app(app_id="cluster")
+    @app(app_id="cluster-routing")
     @step
     def cluster():
         """Split the orders using the cluster model."""

@@ -200,7 +200,7 @@ def cluster_asset(clustered_stops: pd.DataFrame) -> dict:
         "features": features,
     }
     return {
-        "asssets": {
+        "assets": {
             "name": "clustered_stops",
             "content": geojson,
             "content_type": "json",
