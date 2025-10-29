@@ -34,24 +34,9 @@ def main():
 def parse_args() -> argparse.Namespace:
     """Parses command line arguments."""
     parser = argparse.ArgumentParser(description="Cluster and split routing input.")
-    parser.add_argument(
-        "--clusters",
-        type=int,
-        default=5,
-        help="Number of clusters.",
-    )
-    parser.add_argument(
-        "--duration",
-        type=int,
-        default=300,
-        help="Max runtime duration (in seconds).",
-    )
-    parser.add_argument(
-        "--provider",
-        type=str,
-        default="SCIP",
-        help="Solver provider.",
-    )
+    parser.add_argument("--clusters", type=int, default=5, help="Number of clusters.")
+    parser.add_argument("--duration", type=int, default=300, help="Max runtime duration (in seconds).")
+    parser.add_argument("--provider", type=str, default="SCIP", help="Solver provider.")
     return parser.parse_args()
 
 
