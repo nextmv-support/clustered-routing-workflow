@@ -15,6 +15,7 @@ python main.py --clusters 5
 Remotely (Nextmv Cloud):
 
 ```bash
-nextmv app push -a <app-id>
-nextmv app run -a <app-id> -i inputs/ -o 'clusters=5'
+nextmv app create -a cluster-routing -n "Cluster Routing" -d "An app that clusters stops for routing"
+nextmv app push -a cluster-routing
+nextmv app run -a cluster-routing -i inputs/ -o 'clusters=5'
 ```
