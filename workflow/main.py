@@ -5,7 +5,6 @@ import os
 from typing import Any
 
 import nextmv
-import nextmv.cloud
 import pandas as pd
 import pytz
 from nextpipe import FlowSpec, app, foreach, join, needs, step
@@ -15,6 +14,10 @@ options = nextmv.Options(
     nextmv.Option("input", str, "inputs/", "Path to input dir.", False),
     nextmv.Option("output", str, "outputs/solutions/", "Path to output dir.", False),
     nextmv.Option("assets", str, "outputs/assets/", "Path to asset dir.", False),
+    # Clustering options
+    nextmv.Option("cluster_count", int, 5, "Number of clusters to create.", False),
+    nextmv.Option("cluster_duration", int, 300, "Max duration for clustering (in seconds).", False),
+    nextmv.Option("cluster_provider", str, "SCIP", "Solver provider for clustering.", False),
     # Vehicle configuration
     nextmv.Option("vehicle_max_duration", int, 7200, "Max duration per vehicle in seconds.", False),
     nextmv.Option("vehicle_count", int, 5, "Number of vehicles available.", False),
@@ -23,7 +26,14 @@ options = nextmv.Options(
 
 # >>> Workflow definition
 class Flow(FlowSpec):
-    @app(app_id="cluster-routing")
+    @app(
+        app_id="cluster-routing",
+        options={
+            "clusters": options.cluster_count,
+            "duration": options.cluster_duration,
+            "provider": options.cluster_provider,
+        },
+    )
     @step
     def cluster():
         """Split the orders using the cluster model."""
@@ -101,7 +111,7 @@ class Flow(FlowSpec):
                         }
                     )
 
-        # Write outputs
+        # Write solutions
         os.makedirs(options.output, exist_ok=True)
         pd.DataFrame(routes).to_csv(f"{options.output}/routes.csv", index=False)
         pd.DataFrame(unplanned).to_csv(f"{options.output}/unplanned.csv", index=False)

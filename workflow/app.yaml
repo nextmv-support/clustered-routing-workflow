@@ -4,3 +4,46 @@ files:
   - main.py
 python:
   pip-requirements: requirements.txt
+configuration:
+  content:
+    format: "multi-file"
+  options:
+    items:
+      - name: cluster_provider
+        option_type: string
+        default: scip
+        additional_attributes:
+          values:
+            - scip
+            - highs
+        ui:
+          control_type: select
+          display_name: "Solver Provider"
+      - name: cluster_count
+        option_type: int
+        default: 5
+        additional_attributes:
+          min: 1
+          max: 15
+          step: 1
+        ui:
+          control_type: slider
+          display_name: "Number of clusters"
+      - name: cluster_duration
+        option_type: int
+        default: 60
+        ui:
+          control_type: input
+          display_name: Duration (seconds)
+      - name: vehicle_max_duration
+        option_type: int
+        default: 7200
+        ui:
+          control_type: input
+          display_name: "Vehicle Max Duration (seconds)"
+      - name: vehicle_count
+        option_type: int
+        default: 5
+        ui:
+          control_type: input
+          display_name: "Number of Vehicles"
