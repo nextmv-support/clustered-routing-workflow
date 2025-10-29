@@ -7,5 +7,12 @@ python:
 configuration:
   content:
     format: "multi-file"
+    multi-file:
+      input:
+        path: "inputs/"
+      output:
+        solutions: "solutions/"
+        statistics: "statistics.json"
+        assets: "assets.json"
   options:
     format: ["--{{name}}", "{{value}}"]

@@ -14,60 +14,32 @@ def main():
     # Parse arguments
     args = parse_args()
 
-    # Make sure directories exist
-    os.makedirs(args.output, exist_ok=True)
-    os.makedirs(args.statistics, exist_ok=True)
-    os.makedirs(args.assets, exist_ok=True)
-
     # Read input
-    data = pd.read_csv(f"{args.input}/stops.csv")
+    data = pd.read_csv("inputs/stops.csv")
 
     # Cluster stops
     cluster(data, args.clusters, args.provider, args.duration)
 
     # Write each cluster to separate file
+    os.makedirs("solutions/", exist_ok=True)
     for cluster_id in range(args.clusters):
         cluster_data = data[data["cluster"] == cluster_id]
-        cluster_data.to_csv(f"{args.output}/stops_cluster_{cluster_id}.csv", index=False)
+        cluster_data.to_csv(f"solutions/stops_cluster_{cluster_id}.csv", index=False)
 
     # Write statistics
     stats = get_statistics(data)
-    with open(f"{args.statistics}/statistics.json", "w") as f:
-        json.dump(stats, f, indent=2)
+    print("Clustering statistics:")
+    print(json.dumps(stats, indent=2))
 
     # Write cluster asset for visualization
     cluster_asset_data = cluster_asset(data)
-    with open(f"{args.assets}/assets.json", "w") as f:
+    with open("assets.json", "w") as f:
         json.dump(cluster_asset_data, f, indent=2)
 
 
 def parse_args() -> argparse.Namespace:
     """Parses command line arguments."""
     parser = argparse.ArgumentParser(description="Cluster and split routing input.")
-    parser.add_argument(
-        "--input",
-        type=str,
-        default="inputs/",
-        help="Path to input dir.",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="outputs/solutions/",
-        help="Path to output dir.",
-    )
-    parser.add_argument(
-        "--assets",
-        type=str,
-        default="outputs/assets/",
-        help="Path to asset dir.",
-    )
-    parser.add_argument(
-        "--statistics",
-        type=str,
-        default="outputs/statistics/",
-        help="Path to statistics dir.",
-    )
     parser.add_argument(
         "--clusters",
         type=int,
@@ -246,7 +218,7 @@ def get_statistics(df: pd.DataFrame) -> dict:
     stats["max_cluster_size"] = float(cluster_sizes.max())
     stats["avg_cluster_size"] = float(cluster_sizes.mean())
     stats["sse"] = float(calculate_sse(df))
-    return {"statistics": stats}
+    return stats
 
 
 if __name__ == "__main__":
