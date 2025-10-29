@@ -30,7 +30,6 @@ configuration:
       - name: cluster
         option_type: int
         default: 5
-        required: true
         additional_attributes:
           min: 1
           max: 15
