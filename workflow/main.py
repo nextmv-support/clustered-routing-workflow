@@ -1,15 +1,23 @@
 import colorsys
+import datetime
 import glob
-import json
+import os
+from typing import Any
+
 import nextmv
 import nextmv.cloud
-from nextpipe import FlowSpec, app, foreach, join, needs, step
 import pandas as pd
+import pytz
+from nextpipe import FlowSpec, app, foreach, join, needs, step
 
 options = nextmv.Options(
+    # IO related options
     nextmv.Option("input", str, "inputs/", "Path to input dir.", False),
     nextmv.Option("output", str, "outputs/solutions/", "Path to output dir.", False),
     nextmv.Option("assets", str, "outputs/assets/", "Path to asset dir.", False),
+    # Vehicle configuration
+    nextmv.Option("vehicle_max_duration", int, 7200, "Max duration per vehicle in seconds.", False),
+    nextmv.Option("vehicle_count", int, 5, "Number of vehicles available.", False),
 )
 
 
@@ -26,25 +34,77 @@ class Flow(FlowSpec):
     @step
     def transform(result_path: str):
         """Transforms the result for nextroute."""
+        # Shift start is tomorrow at 8am
+        shift_start = datetime.datetime.now(pytz.timezone("UTC")).replace(
+            hour=8, minute=0, second=0, microsecond=0
+        ) + datetime.timedelta(days=1)
         # Convert all CSV files in result_path to nextroute format (dict/JSON)
         routing_inputs = []
         for file_path in glob.glob(f"{result_path}/*.csv"):
-
-
+            df = pd.read_csv(file_path)
+            routing_input = {
+                "defaults": {
+                    "vehicles": {
+                        "start_time": shift_start.isoformat(),
+                        "max_duration": options.vehicle_max_duration,
+                        "speed": 10,
+                    },
+                },
+                "vehicles": [{"id": f"vehicle_{i}"} for i in range(options.vehicle_count)],
+                "stops": [],
+            }
+            for _, row in df.iterrows():
+                stop = {
+                    "id": row["id"],
+                    "location": {"lat": float(row["lat"]), "lon": float(row["lon"])},
+                }
+                routing_input["stops"].append(stop)
+            routing_inputs.append(routing_input)
+        return routing_inputs
 
     @app(app_id="routing-nextroute")
     @needs(predecessors=[transform])
     @step
-    def routing():
+    def route():
         """Runs the routing application."""
         pass
 
-    @needs(predecessors=[routing])
+    @needs(predecessors=[route])
     @join()
     @step
-    def merge_output(result: list[dict]):
+    def merge_output(result: list[list[dict[str, Any]]]):
         """Merge the outputs and convert them to CSV."""
-        pass
+        routes, unplanned = [], []
+        for routing_result in result:
+            routing_result = routing_result[0]  # Unwrap from list (only one predecessor)
+            for stop in routing_result.get("solutions", [])[-1].get("unplanned", []):
+                unplanned.append(
+                    {
+                        "id": stop["id"],
+                        "lat": stop["location"]["lat"],
+                        "lon": stop["location"]["lon"],
+                    }
+                )
+            for vehicle in routing_result.get("solutions", [])[-1].get("vehicles", []):
+                for stop in vehicle.get("route", []):
+                    routes.append(
+                        {
+                            "vehicle_id": vehicle["id"],
+                            "stop_id": stop["stop"]["id"],
+                            "lat": stop["stop"]["location"]["lat"],
+                            "lon": stop["stop"]["location"]["lon"],
+                            "arrival_time": stop.get("arrival_time", None),
+                            "start_time": stop.get("start_time", None),
+                            "end_time": stop.get("end_time", None),
+                            "cumulative_travel_duration": stop.get("cumulative_travel_duration", None),
+                            "cumulative_travel_distance": stop.get("cumulative_travel_distance", None),
+                        }
+                    )
+
+        # Write outputs
+        os.makedirs(options.output, exist_ok=True)
+        pd.DataFrame(routes).to_csv(f"{options.output}/routes.csv", index=False)
+        pd.DataFrame(unplanned).to_csv(f"{options.output}/unplanned.csv", index=False)
 
 
 def main():
@@ -60,6 +120,7 @@ if __name__ == "__main__":
 #     cluster_asset_data = cluster_asset(data)
 #     with open("assets.json", "w") as f:
 #         json.dump(cluster_asset_data, f, indent=2)
+
 
 def get_color(value: float, saturation: float = 0.8, brightness: float = 0.8) -> str:
     """
