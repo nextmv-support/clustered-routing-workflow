@@ -155,7 +155,7 @@ class Flow(FlowSpec):
         # Write solutions
         os.makedirs(options.statistics, exist_ok=True)
         with open(f"{options.statistics}/statistics.json", "w") as f:
-            json.dump(stats, f, indent=2)
+            json.dump({"statistics": {"schema": "v1", "result": {"custom": stats}}}, f, indent=2)
 
     @needs(predecessors=[merge_output])
     @step
@@ -213,12 +213,14 @@ class Flow(FlowSpec):
             "features": features,
         }
         return {
-            "assets": {
-                "name": "clustered_stops",
-                "content": geojson,
-                "content_type": "json",
-                "visual": {"schema": "geojson", "type": "custom-tab", "label": "Clusters"},
-            }
+            "assets": [
+                {
+                    "name": "clustered_stops",
+                    "content": geojson,
+                    "content_type": "json",
+                    "visual": {"schema": "geojson", "type": "custom-tab", "label": "Clusters"},
+                }
+            ]
         }
 
 
