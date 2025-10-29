@@ -16,3 +16,31 @@ configuration:
         assets: "assets.json"
   options:
     format: ["--{{name}}", "{{value}}"]
+    items:
+      - name: provider
+        option_type: string
+        default: scip
+        additional_attributes:
+          values:
+            - scip
+            - highs
+        ui:
+          control_type: select
+          display_name: "Solver Provider"
+      - name: cluster
+        option_type: int
+        default: 5
+        required: true
+        additional_attributes:
+          min: 1
+          max: 15
+          step: 1
+        ui:
+          control_type: slider
+          display_name: "Number of clusters"
+      - name: duration
+        option_type: int
+        default: 60
+        ui:
+          control_type: input
+          display_name: Duration (seconds)
