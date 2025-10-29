@@ -1,2 +1,3 @@
+nextmv==0.34.1.dev1
 nextpipe
 pandas

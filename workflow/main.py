@@ -89,7 +89,7 @@ class Flow(FlowSpec):
     def merge_output(result: list[list[dict[str, Any]]]):
         """Merge the outputs and convert them to CSV."""
         routes, unplanned = [], []
-        for routing_result in result:
+        for i, routing_result in enumerate(result):
             routing_result = routing_result[0]  # Unwrap from list (only one predecessor)
             for stop in routing_result.get("solutions", [])[-1].get("unplanned", []):
                 unplanned.append(
@@ -105,6 +105,7 @@ class Flow(FlowSpec):
                         {
                             "vehicle_id": vehicle["id"],
                             "stop_id": stop["stop"]["id"],
+                            "cluster": i,
                             "lat": stop["stop"]["location"]["lat"],
                             "lon": stop["stop"]["location"]["lon"],
                             "arrival_time": stop.get("arrival_time", None),
@@ -116,9 +117,14 @@ class Flow(FlowSpec):
                     )
 
         # Write solutions
+        routes_df = pd.DataFrame(routes)
+        unplanned_df = pd.DataFrame(unplanned)
         os.makedirs(options.output, exist_ok=True)
-        pd.DataFrame(routes).to_csv(f"{options.output}/routes.csv", index=False)
-        pd.DataFrame(unplanned).to_csv(f"{options.output}/unplanned.csv", index=False)
+        routes_df.to_csv(f"{options.output}/routes.csv", index=False)
+        unplanned_df.to_csv(f"{options.output}/unplanned.csv", index=False)
+
+        # Return result for subsequent steps
+        return routes_df, unplanned_df
 
     @needs(predecessors=[cluster, route])
     @join()
@@ -151,6 +157,70 @@ class Flow(FlowSpec):
         with open(f"{options.statistics}/statistics.json", "w") as f:
             json.dump(stats, f, indent=2)
 
+    @needs(predecessors=[merge_output])
+    @step
+    def write_assets(result: tuple[pd.DataFrame, pd.DataFrame]):
+        """Write visualization assets for the clustered stops."""
+        clustered_stops_df, _ = result
+        os.makedirs(options.assets, exist_ok=True)
+        cluster_asset_data = Flow.cluster_asset(clustered_stops_df)
+        with open(f"{options.assets}/assets.json", "w") as f:
+            json.dump(cluster_asset_data, f, indent=2)
+
+    @staticmethod
+    def get_color(value: float, saturation: float = 0.8, brightness: float = 0.8) -> str:
+        """
+        Maps a float value in [0, 1] to a hex color code from blue to red.
+        """
+        h = (1.0 - value) * 0.66  # Hue from blue (0.66) to red (0.0)
+        r, g, b = colorsys.hsv_to_rgb(h, saturation, brightness)
+        return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
+
+    @staticmethod
+    def cluster_asset(clustered_stops: pd.DataFrame) -> dict:
+        """
+        Create a visualization asset for the clustered stops. A simple GeoJSON structure
+        with colored points based on cluster assignments.
+        """
+        features = []
+        unique_clusters = sorted(clustered_stops["cluster"].unique())
+        cluster_id_to_color = {
+            cid: Flow.get_color(i / (len(unique_clusters) - 1)) for i, cid in enumerate(unique_clusters)
+        }
+
+        for _, row in clustered_stops.iterrows():
+            feature = {
+                "id": row["stop_id"],
+                "type": "Feature",
+                "properties": {
+                    "style": {
+                        "color": cluster_id_to_color[row["cluster"]],
+                    },
+                    "metadata": [
+                        {"key": "id", "value": row["stop_id"]},
+                        {"key": "cluster", "value": row["cluster"]},
+                    ],
+                },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [row["lon"], row["lat"]],
+                },
+            }
+            features.append(feature)
+
+        geojson = {
+            "type": "FeatureCollection",
+            "features": features,
+        }
+        return {
+            "assets": {
+                "name": "clustered_stops",
+                "content": geojson,
+                "content_type": "json",
+                "visual": {"schema": "geojson", "type": "custom-tab", "label": "Clusters"},
+            }
+        }
+
 
 def main():
     flow = Flow("DecisionFlow", options.input)
@@ -159,61 +229,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# # Write cluster asset for visualization
-#     cluster_asset_data = cluster_asset(data)
-#     with open("assets.json", "w") as f:
-#         json.dump(cluster_asset_data, f, indent=2)
-
-
-def get_color(value: float, saturation: float = 0.8, brightness: float = 0.8) -> str:
-    """
-    Maps a float value in [0, 1] to a hex color code from blue to red.
-    """
-    h = (1.0 - value) * 0.66  # Hue from blue (0.66) to red (0.0)
-    r, g, b = colorsys.hsv_to_rgb(h, saturation, brightness)
-    return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
-
-
-def cluster_asset(clustered_stops: pd.DataFrame) -> dict:
-    """
-    Create a visualization asset for the clustered stops. A simple GeoJSON structure
-    with colored points based on cluster assignments.
-    """
-    features = []
-    unique_clusters = sorted(clustered_stops["cluster"].unique())
-    cluster_id_to_color = {cid: get_color(i / (len(unique_clusters) - 1)) for i, cid in enumerate(unique_clusters)}
-
-    for _, row in clustered_stops.iterrows():
-        feature = {
-            "id": row["id"],
-            "type": "Feature",
-            "properties": {
-                "style": {
-                    "color": cluster_id_to_color[row["cluster"]],
-                },
-                "metadata": [
-                    {"key": "id", "value": row["id"]},
-                    {"key": "cluster", "value": row["cluster"]},
-                ],
-            },
-            "geometry": {
-                "type": "Point",
-                "coordinates": [row["lon"], row["lat"]],
-            },
-        }
-        features.append(feature)
-
-    geojson = {
-        "type": "FeatureCollection",
-        "features": features,
-    }
-    return {
-        "assets": {
-            "name": "clustered_stops",
-            "content": geojson,
-            "content_type": "json",
-            "visual": {"schema": "geojson", "type": "custom-tab", "label": "Clusters"},
-        }
-    }
